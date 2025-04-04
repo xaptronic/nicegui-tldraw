@@ -1,0 +1,13 @@
+# UV venv
+.venv
+
+dist/
+
+# Node.js dependencies
+src/tldraw/node_modules
+
+# Build output
+src/tldraw/dist
+
+# Python cache
+src/nicegui_tldraw/__pycache__

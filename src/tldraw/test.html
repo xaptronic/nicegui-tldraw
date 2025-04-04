@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Component</title>
+  <style>
+    #root { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="dist/tldraw.js"></script>
+  <script>
+    let methods;
+    // tldraw.render("#root", {syncServer: "127.0.0.1:8081", "room": "test"}).then((m) => methods = m);
+    const { root, promise } = tldraw.render("#root", {
+      syncServer:  "127.0.0.1:8081",
+      room: "test",
+    });
+    promise.then(({ methods }) => {
+      ({
+        getSnapshot: this.getSnapshot,
+        loadSnapshot: this.loadSnapshot,
+        getEditor: this.getEditor,
+      } = methods);
+      console.log("ready");
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      if (document.fullscreenElement) {
+        console.log("we're in full screen");
+      } else {
+        console.log("we're out of fullscreen")
+      }
+    });
+  </script>
+</body>
+</html>
