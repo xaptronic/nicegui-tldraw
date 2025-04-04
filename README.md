@@ -111,56 +111,74 @@ The package can be configured using environment variables or by passing paramete
 ### Sync Server Configuration
 
 #### NICEGUI_TLDRAW_SYNC_SERVER
-**Description**: The address of the sync server.
-**Default Value**: "127.0.0.1:8081"
-**Usage**:
-- Set this to specify a different sync server address (e.g., "my-domain.com" if behind a proxy)
-- Set to `None` to disable sync server functionality
-- Can be overridden by passing `sync_server` parameter to `tldraw()`
+
+The address of the sync server.
+
+- Default: "127.0.0.1:8081"
+- Usage:
+  - Set this to specify a different sync server address (e.g., "my-domain.com" if behind a proxy)
+  - Set to `None` to disable sync server functionality
+  - Can be overridden by passing `sync_server` parameter to `tldraw()`
 
 #### NICEGUI_TLDRAW_SYNC_SERVER_PORT
-**Description**: Determines the port used by the sync server.
-**Default Value**: 8081
-**Usage**: Set this environment variable to specify a different port.
+
+Determines the port used by the sync server.
+
+- Default: 8081
+- Usage: Set this environment variable to specify a different port.
 
 #### NICEGUI_TLDRAW_SYNC_SERVER_PATH
-**Description**: Specifies the path to the server script used in development mode.
-**Default Value**: "lib/tldraw/server.js"
-**Usage**: Set this environment variable to change the path if the server script is located elsewhere.
+
+Specifies the path to the server script used in development mode.
+
+- Default: "lib/tldraw/server.js"
+- Usage: Set this environment variable to change the path if the server script is located elsewhere.
 
 #### NODE_ENV
-**Description**: Sets the Node.js environment mode.
-**Default Value**: "development"
-**Usage**: Adjust this environment variable to "production" or other Node.js environment settings as needed.
+
+Sets the Node.js environment mode.
+
+- Default: "development"
+- Usage: Adjust this environment variable to "production" or other Node.js environment settings as needed.
 
 #### NICEGUI_TLDRAW_NODE_BIN_PATH
-**Description**: Path to the Node.js binary.
-**Default Value**: "/opt/homebrew/bin/node"
-**Usage**: If Node.js is installed in a different location, update this environment variable to point to the correct binary.
+
+Path to the Node.js binary.
+
+- Default: "/opt/homebrew/bin/node"
+- Usage: If Node.js is installed in a different location, update this environment variable to point to the correct binary.
 
 ### Asset Management
 
 #### NICEGUI_TLDRAW_ASSET_PATH
-**Description**: Directory where uploaded assets are stored.
-**Default Value**: "/tmp/nicegui_tldraw"
-**Usage**: Set this to specify a different storage location for assets.
+
+Directory where uploaded assets are stored.
+
+- Default: "/tmp/nicegui_tldraw"
+- Usage: Set this to specify a different storage location for assets.
 
 #### NICEGUI_TLDRAW_ASSET_STORE_URL
-**Description**: Base URL for asset storage.
-**Default Value**: "/_nicegui_tldraw"
-**Usage**: Change this if you need to use a different URL path for asset storage.
+
+Base URL for asset storage.
+
+- Default: "/_nicegui_tldraw"
+- Usage: Change this if you need to use a different URL path for asset storage.
 
 ### Room Configuration
 
 #### NICEGUI_TLDRAW_DEFAULT_ROOM
-**Description**: Default room name for collaboration.
-**Default Value**: "nicegui_tldraw"
-**Usage**: Set this to change the default room name.
+
+Default room name for collaboration.
+
+- Default: "nicegui_tldraw"
+- Usage: Set this to change the default room name.
 
 #### NICEGUI_TLDRAW_SYNC_STATE_DIR
-**Description**: Directory where room state is stored.
-**Default Value**: "/tmp/nicegui_tldraw"
-**Usage**: Set this to specify a different location for storing room state.
+
+Directory where room state is stored.
+
+- Default: "/tmp/nicegui_tldraw"
+- Usage: Set this to specify a different location for storing room state.
 
 ## API Reference
 
