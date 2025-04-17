@@ -1,3 +1,5 @@
+import random
+
 from nicegui import ui
 from nicegui_tldraw import tldraw, register_lifecycle, register_asset_handlers
 
@@ -21,7 +23,7 @@ async def index():
     tldraw_instance = tldraw(
         room="my_room",  # Optional: specify a room for collaboration
         user_preferences={
-            "id": "user123",
+            "id": f"user{random.randint(100000, 999999)}",
             "name": "John Doe",
         },
     ).classes("grow w-full")
