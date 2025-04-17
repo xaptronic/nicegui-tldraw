@@ -33,12 +33,14 @@ class Tldraw(
         asset_store_url=ASSET_STORE_URL,
         room=DEFAULT_ROOM,
         user_preferences=None,
+        auto_focus=False,
     ):
         super().__init__()
         self._props["sync_server"] = sync_server
         self._props["asset_store_url"] = asset_store_url
         self._props["room"] = room
         self._props["user_preferences"] = user_preferences
+        self._props["auto_focus"] = auto_focus
 
     def save(self, timeout: float = 1) -> AwaitableResponse:
         return self.run_method("save", timeout=timeout)

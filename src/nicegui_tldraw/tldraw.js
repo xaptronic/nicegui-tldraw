@@ -10,6 +10,7 @@ export default {
       room: this.room,
       userPreferences: this.user_preferences,
       onFullscreenClick: this.on_fullscreen_click,
+      autoFocus: this.auto_focus,
     });
     promise.then(({ methods }) => {
       ({
@@ -58,5 +59,9 @@ export default {
     asset_store_url: String,
     room: String,
     user_preferences: Object,
+    auto_focus: {
+      type: Boolean,
+      default: false,
+    },
   },
 };
