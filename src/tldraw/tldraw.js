@@ -7,6 +7,7 @@ import {
   uniqueId,
   useTldrawUser,
   toRichText,
+  PeopleMenu,
 } from "tldraw";
 import { useSync } from "@tldraw/sync";
 import "tldraw/tldraw.css";
@@ -105,7 +106,7 @@ const TldrawWrapperWithoutSync = ({ props, container, onReady }) => {
   return (
     <Tldraw
       onMount={handleMount}
-      store={assetStore}
+      assets={assetStore}
       user={user}
       components={{
         SharePanel: (componentProps) => (
@@ -160,7 +161,10 @@ const TldrawWrapperWithSync = ({ props, container, onReady }) => {
       user={user}
       components={{
         SharePanel: (componentProps) => (
+        <div className="tlui-share-zone" draggable={false}>
+          <PeopleMenu />
           <FullscreenButton target={container} {...componentProps} />
+        </div>
         ),
       }}
       {...restProps}
