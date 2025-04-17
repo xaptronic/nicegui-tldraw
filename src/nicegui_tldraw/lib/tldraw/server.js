@@ -9473,9 +9473,9 @@ var require_symbols2 = __commonJS({
   }
 });
 
-// node_modules/process-warning/index.js
+// node_modules/fastify/node_modules/process-warning/index.js
 var require_process_warning = __commonJS({
-  "node_modules/process-warning/index.js"(exports2, module2) {
+  "node_modules/fastify/node_modules/process-warning/index.js"(exports2, module2) {
     "use strict";
     var { format: format2 } = require("node:util");
     function createDeprecation(params) {
@@ -9711,6 +9711,10 @@ var require_errors3 = __commonJS({
       FST_ERR_DEC_REFERENCE_TYPE: createError(
         "FST_ERR_DEC_REFERENCE_TYPE",
         "The decorator '%s' of type '%s' is a reference type. Use the { getter, setter } interface instead."
+      ),
+      FST_ERR_DEC_UNDECLARED: createError(
+        "FST_ERR_DEC_UNDECLARED",
+        "No decorator '%s' has been declared on %s."
       ),
       /**
        * hooks
@@ -16366,6 +16370,139 @@ var require_error_handler = __commonJS({
   }
 });
 
+// node_modules/fastify/lib/decorate.js
+var require_decorate = __commonJS({
+  "node_modules/fastify/lib/decorate.js"(exports2, module2) {
+    "use strict";
+    var {
+      kReply,
+      kRequest,
+      kState,
+      kHasBeenDecorated
+    } = require_symbols2();
+    var {
+      FST_ERR_DEC_ALREADY_PRESENT,
+      FST_ERR_DEC_MISSING_DEPENDENCY,
+      FST_ERR_DEC_AFTER_START,
+      FST_ERR_DEC_REFERENCE_TYPE,
+      FST_ERR_DEC_DEPENDENCY_INVALID_TYPE,
+      FST_ERR_DEC_UNDECLARED
+    } = require_errors3();
+    function decorate(instance, name, fn, dependencies) {
+      if (Object.hasOwn(instance, name)) {
+        throw new FST_ERR_DEC_ALREADY_PRESENT(name);
+      }
+      checkDependencies(instance, name, dependencies);
+      if (fn && (typeof fn.getter === "function" || typeof fn.setter === "function")) {
+        Object.defineProperty(instance, name, {
+          get: fn.getter,
+          set: fn.setter
+        });
+      } else {
+        instance[name] = fn;
+      }
+    }
+    function getInstanceDecorator(name) {
+      if (!checkExistence(this, name)) {
+        throw new FST_ERR_DEC_UNDECLARED(name, "instance");
+      }
+      if (typeof this[name] === "function") {
+        return this[name].bind(this);
+      }
+      return this[name];
+    }
+    function decorateConstructor(konstructor, name, fn, dependencies) {
+      const instance = konstructor.prototype;
+      if (Object.hasOwn(instance, name) || hasKey(konstructor, name)) {
+        throw new FST_ERR_DEC_ALREADY_PRESENT(name);
+      }
+      konstructor[kHasBeenDecorated] = true;
+      checkDependencies(konstructor, name, dependencies);
+      if (fn && (typeof fn.getter === "function" || typeof fn.setter === "function")) {
+        Object.defineProperty(instance, name, {
+          get: fn.getter,
+          set: fn.setter
+        });
+      } else if (typeof fn === "function") {
+        instance[name] = fn;
+      } else {
+        konstructor.props.push({ key: name, value: fn });
+      }
+    }
+    function checkReferenceType(name, fn) {
+      if (typeof fn === "object" && fn && !(typeof fn.getter === "function" || typeof fn.setter === "function")) {
+        throw new FST_ERR_DEC_REFERENCE_TYPE(name, typeof fn);
+      }
+    }
+    function decorateFastify(name, fn, dependencies) {
+      assertNotStarted(this, name);
+      decorate(this, name, fn, dependencies);
+      return this;
+    }
+    function checkExistence(instance, name) {
+      if (name) {
+        return name in instance || instance.prototype && name in instance.prototype || hasKey(instance, name);
+      }
+      return instance in this;
+    }
+    function hasKey(fn, name) {
+      if (fn.props) {
+        return fn.props.find(({ key }) => key === name);
+      }
+      return false;
+    }
+    function checkRequestExistence(name) {
+      if (name && hasKey(this[kRequest], name)) return true;
+      return checkExistence(this[kRequest].prototype, name);
+    }
+    function checkReplyExistence(name) {
+      if (name && hasKey(this[kReply], name)) return true;
+      return checkExistence(this[kReply].prototype, name);
+    }
+    function checkDependencies(instance, name, deps) {
+      if (deps === void 0 || deps === null) {
+        return;
+      }
+      if (!Array.isArray(deps)) {
+        throw new FST_ERR_DEC_DEPENDENCY_INVALID_TYPE(name);
+      }
+      for (let i = 0; i !== deps.length; ++i) {
+        if (!checkExistence(instance, deps[i])) {
+          throw new FST_ERR_DEC_MISSING_DEPENDENCY(deps[i]);
+        }
+      }
+    }
+    function decorateReply(name, fn, dependencies) {
+      assertNotStarted(this, name);
+      checkReferenceType(name, fn);
+      decorateConstructor(this[kReply], name, fn, dependencies);
+      return this;
+    }
+    function decorateRequest(name, fn, dependencies) {
+      assertNotStarted(this, name);
+      checkReferenceType(name, fn);
+      decorateConstructor(this[kRequest], name, fn, dependencies);
+      return this;
+    }
+    function assertNotStarted(instance, name) {
+      if (instance[kState].started) {
+        throw new FST_ERR_DEC_AFTER_START(name);
+      }
+    }
+    module2.exports = {
+      add: decorateFastify,
+      exist: checkExistence,
+      existRequest: checkRequestExistence,
+      existReply: checkReplyExistence,
+      dependencies: checkDependencies,
+      decorateReply,
+      decorateRequest,
+      getInstanceDecorator,
+      hasKey
+    };
+  }
+});
+
 // node_modules/fastify/lib/reply.js
 var require_reply = __commonJS({
   "node_modules/fastify/lib/reply.js"(exports2, module2) {
@@ -16419,8 +16556,10 @@ var require_reply = __commonJS({
       FST_ERR_BAD_TRAILER_NAME,
       FST_ERR_BAD_TRAILER_VALUE,
       FST_ERR_MISSING_SERIALIZATION_FN,
-      FST_ERR_MISSING_CONTENTTYPE_SERIALIZATION_FN
+      FST_ERR_MISSING_CONTENTTYPE_SERIALIZATION_FN,
+      FST_ERR_DEC_UNDECLARED
     } = require_errors3();
+    var decorators = require_decorate();
     var toString = Object.prototype.toString;
     function Reply(res, request, log) {
       this.raw = res;
@@ -16749,6 +16888,16 @@ var require_reply = __commonJS({
           fulfilled();
         }
       });
+    };
+    Reply.prototype.getDecorator = function(name) {
+      if (!decorators.hasKey(this, name) && !decorators.exist(this, name)) {
+        throw new FST_ERR_DEC_UNDECLARED(name, "reply");
+      }
+      const decorator = this[name];
+      if (typeof decorator === "function") {
+        return decorator.bind(this);
+      }
+      return decorator;
     };
     function preSerializationHook(reply, payload) {
       if (reply[kRouteContext].preSerialization !== null) {
@@ -18100,7 +18249,8 @@ var require_request = __commonJS({
       kRouteContext,
       kRequestOriginalUrl
     } = require_symbols2();
-    var { FST_ERR_REQ_INVALID_VALIDATION_INVOCATION } = require_errors3();
+    var { FST_ERR_REQ_INVALID_VALIDATION_INVOCATION, FST_ERR_DEC_UNDECLARED } = require_errors3();
+    var decorators = require_decorate();
     var HTTP_PART_SYMBOL_MAP = {
       body: kSchemaBody,
       headers: kSchemaHeaders,
@@ -18204,6 +18354,11 @@ var require_request = __commonJS({
         }
       });
       return _Request;
+    }
+    function assertsRequestDecoration(request, name) {
+      if (!decorators.hasKey(request, name) && !decorators.exist(request, name)) {
+        throw new FST_ERR_DEC_UNDECLARED(name, "request");
+      }
     }
     Object.defineProperties(Request.prototype, {
       server: {
@@ -18368,6 +18523,22 @@ var require_request = __commonJS({
           }
           return validate(input);
         }
+      },
+      getDecorator: {
+        value: function(name) {
+          assertsRequestDecoration(this, name);
+          const decorator = this[name];
+          if (typeof decorator === "function") {
+            return decorator.bind(this);
+          }
+          return decorator;
+        }
+      },
+      setDecorator: {
+        value: function(name, value) {
+          assertsRequestDecoration(this, name);
+          this[name] = value;
+        }
       }
     });
     module2.exports = Request;
@@ -18464,127 +18635,6 @@ var require_context = __commonJS({
   }
 });
 
-// node_modules/fastify/lib/decorate.js
-var require_decorate = __commonJS({
-  "node_modules/fastify/lib/decorate.js"(exports2, module2) {
-    "use strict";
-    var {
-      kReply,
-      kRequest,
-      kState,
-      kHasBeenDecorated
-    } = require_symbols2();
-    var {
-      FST_ERR_DEC_ALREADY_PRESENT,
-      FST_ERR_DEC_MISSING_DEPENDENCY,
-      FST_ERR_DEC_AFTER_START,
-      FST_ERR_DEC_REFERENCE_TYPE,
-      FST_ERR_DEC_DEPENDENCY_INVALID_TYPE
-    } = require_errors3();
-    function decorate(instance, name, fn, dependencies) {
-      if (Object.hasOwn(instance, name)) {
-        throw new FST_ERR_DEC_ALREADY_PRESENT(name);
-      }
-      checkDependencies(instance, name, dependencies);
-      if (fn && (typeof fn.getter === "function" || typeof fn.setter === "function")) {
-        Object.defineProperty(instance, name, {
-          get: fn.getter,
-          set: fn.setter
-        });
-      } else {
-        instance[name] = fn;
-      }
-    }
-    function decorateConstructor(konstructor, name, fn, dependencies) {
-      const instance = konstructor.prototype;
-      if (Object.hasOwn(instance, name) || hasKey(konstructor, name)) {
-        throw new FST_ERR_DEC_ALREADY_PRESENT(name);
-      }
-      konstructor[kHasBeenDecorated] = true;
-      checkDependencies(konstructor, name, dependencies);
-      if (fn && (typeof fn.getter === "function" || typeof fn.setter === "function")) {
-        Object.defineProperty(instance, name, {
-          get: fn.getter,
-          set: fn.setter
-        });
-      } else if (typeof fn === "function") {
-        instance[name] = fn;
-      } else {
-        konstructor.props.push({ key: name, value: fn });
-      }
-    }
-    function checkReferenceType(name, fn) {
-      if (typeof fn === "object" && fn && !(typeof fn.getter === "function" || typeof fn.setter === "function")) {
-        throw new FST_ERR_DEC_REFERENCE_TYPE(name, typeof fn);
-      }
-    }
-    function decorateFastify(name, fn, dependencies) {
-      assertNotStarted(this, name);
-      decorate(this, name, fn, dependencies);
-      return this;
-    }
-    function checkExistence(instance, name) {
-      if (name) {
-        return name in instance || instance.prototype && name in instance.prototype || hasKey(instance, name);
-      }
-      return instance in this;
-    }
-    function hasKey(fn, name) {
-      if (fn.props) {
-        return fn.props.find(({ key }) => key === name);
-      }
-      return false;
-    }
-    function checkRequestExistence(name) {
-      if (name && hasKey(this[kRequest], name)) return true;
-      return checkExistence(this[kRequest].prototype, name);
-    }
-    function checkReplyExistence(name) {
-      if (name && hasKey(this[kReply], name)) return true;
-      return checkExistence(this[kReply].prototype, name);
-    }
-    function checkDependencies(instance, name, deps) {
-      if (deps === void 0 || deps === null) {
-        return;
-      }
-      if (!Array.isArray(deps)) {
-        throw new FST_ERR_DEC_DEPENDENCY_INVALID_TYPE(name);
-      }
-      for (let i = 0; i !== deps.length; ++i) {
-        if (!checkExistence(instance, deps[i])) {
-          throw new FST_ERR_DEC_MISSING_DEPENDENCY(deps[i]);
-        }
-      }
-    }
-    function decorateReply(name, fn, dependencies) {
-      assertNotStarted(this, name);
-      checkReferenceType(name, fn);
-      decorateConstructor(this[kReply], name, fn, dependencies);
-      return this;
-    }
-    function decorateRequest(name, fn, dependencies) {
-      assertNotStarted(this, name);
-      checkReferenceType(name, fn);
-      decorateConstructor(this[kRequest], name, fn, dependencies);
-      return this;
-    }
-    function assertNotStarted(instance, name) {
-      if (instance[kState].started) {
-        throw new FST_ERR_DEC_AFTER_START(name);
-      }
-    }
-    module2.exports = {
-      add: decorateFastify,
-      exist: checkExistence,
-      existRequest: checkRequestExistence,
-      existReply: checkReplyExistence,
-      dependencies: checkDependencies,
-      decorateReply,
-      decorateRequest
-    };
-  }
-});
-
 // node_modules/secure-json-parse/index.js
 var require_secure_json_parse = __commonJS({
   "node_modules/secure-json-parse/index.js"(exports2, module2) {
@@ -18675,8 +18725,8 @@ var require_secure_json_parse = __commonJS({
       Error.stackTraceLimit = 0;
       try {
         return _parse(text, reviver, { safe: true });
-      } catch (_e) {
-        return null;
+      } catch {
+        return void 0;
       } finally {
         Error.stackTraceLimit = stackTraceLimit;
       }
@@ -37768,6 +37818,64 @@ var require_dist4 = __commonJS({
   }
 });
 
+// node_modules/process-warning/index.js
+var require_process_warning2 = __commonJS({
+  "node_modules/process-warning/index.js"(exports2, module2) {
+    "use strict";
+    var { format: format2 } = require("node:util");
+    function createDeprecation(params) {
+      return createWarning({ ...params, name: "DeprecationWarning" });
+    }
+    function createWarning({ name, code, message, unlimited = false } = {}) {
+      if (!name) throw new Error("Warning name must not be empty");
+      if (!code) throw new Error("Warning code must not be empty");
+      if (!message) throw new Error("Warning message must not be empty");
+      if (typeof unlimited !== "boolean") throw new Error("Warning opts.unlimited must be a boolean");
+      code = code.toUpperCase();
+      let warningContainer = {
+        [name]: function(a, b, c) {
+          if (warning.emitted === true && warning.unlimited !== true) {
+            return;
+          }
+          warning.emitted = true;
+          process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
+        }
+      };
+      if (unlimited) {
+        warningContainer = {
+          [name]: function(a, b, c) {
+            warning.emitted = true;
+            process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
+          }
+        };
+      }
+      const warning = warningContainer[name];
+      warning.emitted = false;
+      warning.message = message;
+      warning.unlimited = unlimited;
+      warning.code = code;
+      warning.format = function(a, b, c) {
+        let formatted;
+        if (a && b && c) {
+          formatted = format2(message, a, b, c);
+        } else if (a && b) {
+          formatted = format2(message, a, b);
+        } else if (a) {
+          formatted = format2(message, a);
+        } else {
+          formatted = message;
+        }
+        return formatted;
+      };
+      return warning;
+    }
+    var out = { createWarning, createDeprecation };
+    module2.exports = out;
+    module2.exports.default = out;
+    module2.exports.processWarning = out;
+  }
+});
+
 // node_modules/light-my-request/lib/parse-url.js
 var require_parse_url = __commonJS({
   "node_modules/light-my-request/lib/parse-url.js"(exports2, module2) {
@@ -37869,7 +37977,7 @@ var require_request2 = __commonJS({
     var util = require("node:util");
     var cookie = require_dist4();
     var assert2 = require("node:assert");
-    var { createDeprecation } = require_process_warning();
+    var { createDeprecation } = require_process_warning2();
     var parseURL = require_parse_url();
     var { isFormDataLike, formDataToStream } = require_form_data();
     var { EventEmitter } = require("node:events");
@@ -39406,7 +39514,7 @@ var require_light_my_request = __commonJS({
 var require_fastify = __commonJS({
   "node_modules/fastify/fastify.js"(exports2, module2) {
     "use strict";
-    var VERSION = "5.2.2";
+    var VERSION = "5.3.0";
     var Avvio = require_boot();
     var http = require("node:http");
     var diagnostics = require("node:diagnostics_channel");
@@ -39698,6 +39806,7 @@ var require_fastify = __commonJS({
         decorateRequest: decorator.decorateRequest,
         hasRequestDecorator: decorator.existRequest,
         hasReplyDecorator: decorator.existReply,
+        getDecorator: decorator.getInstanceDecorator,
         addHttpMethod,
         // fake http injection
         inject,
@@ -39934,7 +40043,7 @@ var require_fastify = __commonJS({
           resolveReady(fastify3);
           fastify3[kState].booting = false;
           fastify3[kState].ready = true;
-          fastify3[kState].promise = null;
+          fastify3[kState].readyPromise = null;
         }
       }
       function withTypeProvider() {
@@ -41547,7 +41656,7 @@ var require_lodash3 = __commonJS({
       return value != null && isLength(value.length) && !isFunction(value);
     }
     var isBuffer = nativeIsBuffer || stubFalse;
-    function isEqual5(value, other) {
+    function isEqual6(value, other) {
       return baseIsEqual(value, other);
     }
     function isFunction(value) {
@@ -41577,7 +41686,7 @@ var require_lodash3 = __commonJS({
     function stubFalse() {
       return false;
     }
-    module2.exports = isEqual5;
+    module2.exports = isEqual6;
   }
 });
 
@@ -42665,7 +42774,7 @@ var STRUCTURED_CLONE_OBJECT_PROTOTYPE = Object.getPrototypeOf(structuredClone({}
 // node_modules/@tldraw/utils/dist-esm/index.mjs
 registerTldrawLibraryVersion(
   "@tldraw/utils",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
@@ -42921,68 +43030,6 @@ var HistoryBuffer = class {
   }
 };
 
-// node_modules/@tldraw/state/dist-esm/lib/capture.mjs
-var CaptureStackFrame = class {
-  constructor(below, child) {
-    this.below = below;
-    this.child = child;
-  }
-  offset = 0;
-  maybeRemoved;
-};
-var inst = singleton("capture", () => ({ stack: null }));
-function startCapturingParents(child) {
-  inst.stack = new CaptureStackFrame(inst.stack, child);
-  child.parentSet.clear();
-}
-function stopCapturingParents() {
-  const frame = inst.stack;
-  inst.stack = frame.below;
-  if (frame.offset < frame.child.parents.length) {
-    for (let i = frame.offset; i < frame.child.parents.length; i++) {
-      const maybeRemovedParent = frame.child.parents[i];
-      if (!frame.child.parentSet.has(maybeRemovedParent)) {
-        detach(maybeRemovedParent, frame.child);
-      }
-    }
-    frame.child.parents.length = frame.offset;
-    frame.child.parentEpochs.length = frame.offset;
-  }
-  if (frame.maybeRemoved) {
-    for (let i = 0; i < frame.maybeRemoved.length; i++) {
-      const maybeRemovedParent = frame.maybeRemoved[i];
-      if (!frame.child.parentSet.has(maybeRemovedParent)) {
-        detach(maybeRemovedParent, frame.child);
-      }
-    }
-  }
-}
-function maybeCaptureParent(p) {
-  if (inst.stack) {
-    const wasCapturedAlready = inst.stack.child.parentSet.has(p);
-    if (wasCapturedAlready) {
-      return;
-    }
-    inst.stack.child.parentSet.add(p);
-    if (inst.stack.child.isActivelyListening) {
-      attach(p, inst.stack.child);
-    }
-    if (inst.stack.offset < inst.stack.child.parents.length) {
-      const maybeRemovedParent = inst.stack.child.parents[inst.stack.offset];
-      if (maybeRemovedParent !== p) {
-        if (!inst.stack.maybeRemoved) {
-          inst.stack.maybeRemoved = [maybeRemovedParent];
-        } else {
-          inst.stack.maybeRemoved.push(maybeRemovedParent);
-        }
-      }
-    }
-    inst.stack.child.parents[inst.stack.offset] = p;
-    inst.stack.child.parentEpochs[inst.stack.offset] = p.lastChangedEpoch;
-    inst.stack.offset++;
-  }
-}
-
 // node_modules/@tldraw/state/dist-esm/lib/constants.mjs
 var GLOBAL_START_EPOCH = -1;
 
@@ -43006,6 +43053,7 @@ var __EffectScheduler__ = class {
   lastTraversedEpoch = GLOBAL_START_EPOCH;
   lastReactedEpoch = GLOBAL_START_EPOCH;
   _scheduleCount = 0;
+  __debug_ancestor_epochs__ = null;
   /**
    * The number of times this effect has been scheduled.
    * @public
@@ -43049,7 +43097,7 @@ var __EffectScheduler__ = class {
   /**
    * Makes this scheduler become 'actively listening' to its parents.
    * If it has been executed before it will immediately become eligible to receive 'maybeScheduleEffect' calls.
-   * If it has not executed before it will need to be manually executed once to become eligible for scheduling, i.e. by calling {@link state#EffectScheduler.execute}.
+   * If it has not executed before it will need to be manually executed once to become eligible for scheduling, i.e. by calling `EffectScheduler.execute`.
    * @public
    */
   attach() {
@@ -43060,7 +43108,7 @@ var __EffectScheduler__ = class {
   }
   /**
    * Makes this scheduler stop 'actively listening' to its parents.
-   * It will no longer be eligible to receive 'maybeScheduleEffect' calls until {@link state#EffectScheduler.attach} is called again.
+   * It will no longer be eligible to receive 'maybeScheduleEffect' calls until `EffectScheduler.attach` is called again.
    */
   detach() {
     this._isActivelyListening = false;
@@ -43110,7 +43158,7 @@ var Transaction = class {
    * @public
    */
   commit() {
-    if (inst2.globalIsReacting) {
+    if (inst.globalIsReacting) {
       for (const atom2 of this.initialAtomValues.keys()) {
         traverseAtomForCleanup(atom2);
       }
@@ -43130,7 +43178,7 @@ var Transaction = class {
    * @public
    */
   abort() {
-    inst2.globalEpoch++;
+    inst.globalEpoch++;
     this.initialAtomValues.forEach((value, atom2) => {
       atom2.set(value);
       atom2.historyBuffer?.clear();
@@ -43138,7 +43186,7 @@ var Transaction = class {
     this.commit();
   }
 };
-var inst2 = singleton("transactions", () => ({
+var inst = singleton("transactions", () => ({
   // The current epoch (global to all atoms).
   globalEpoch: GLOBAL_START_EPOCH + 1,
   // Whether any transaction is reacting.
@@ -43148,19 +43196,19 @@ var inst2 = singleton("transactions", () => ({
   reactionEpoch: GLOBAL_START_EPOCH + 1
 }));
 function getReactionEpoch() {
-  return inst2.reactionEpoch;
+  return inst.reactionEpoch;
 }
 function getGlobalEpoch() {
-  return inst2.globalEpoch;
+  return inst.globalEpoch;
 }
 function getIsReacting() {
-  return inst2.globalIsReacting;
+  return inst.globalIsReacting;
 }
 function traverse(reactors, child) {
-  if (child.lastTraversedEpoch === inst2.globalEpoch) {
+  if (child.lastTraversedEpoch === inst.globalEpoch) {
     return;
   }
-  child.lastTraversedEpoch = inst2.globalEpoch;
+  child.lastTraversedEpoch = inst.globalEpoch;
   if (child instanceof EffectScheduler) {
     reactors.add(child);
   } else {
@@ -43169,14 +43217,14 @@ function traverse(reactors, child) {
   }
 }
 function flushChanges(atoms) {
-  if (inst2.globalIsReacting) {
+  if (inst.globalIsReacting) {
     throw new Error("flushChanges cannot be called during a reaction");
   }
-  const outerTxn = inst2.currentTransaction;
+  const outerTxn = inst.currentTransaction;
   try {
-    inst2.currentTransaction = null;
-    inst2.globalIsReacting = true;
-    inst2.reactionEpoch = inst2.globalEpoch;
+    inst.currentTransaction = null;
+    inst.globalIsReacting = true;
+    inst.reactionEpoch = inst.globalEpoch;
     const reactors = /* @__PURE__ */ new Set();
     for (const atom2 of atoms) {
       atom2.children.visit((child) => traverse(reactors, child));
@@ -43185,43 +43233,43 @@ function flushChanges(atoms) {
       r.maybeScheduleEffect();
     }
     let updateDepth = 0;
-    while (inst2.cleanupReactors?.size) {
+    while (inst.cleanupReactors?.size) {
       if (updateDepth++ > 1e3) {
         throw new Error("Reaction update depth limit exceeded");
       }
-      const reactors2 = inst2.cleanupReactors;
-      inst2.cleanupReactors = null;
+      const reactors2 = inst.cleanupReactors;
+      inst.cleanupReactors = null;
       for (const r of reactors2) {
         r.maybeScheduleEffect();
       }
     }
   } finally {
-    inst2.cleanupReactors = null;
-    inst2.globalIsReacting = false;
-    inst2.currentTransaction = outerTxn;
+    inst.cleanupReactors = null;
+    inst.globalIsReacting = false;
+    inst.currentTransaction = outerTxn;
   }
 }
 function atomDidChange(atom2, previousValue) {
-  if (inst2.currentTransaction) {
-    if (!inst2.currentTransaction.initialAtomValues.has(atom2)) {
-      inst2.currentTransaction.initialAtomValues.set(atom2, previousValue);
+  if (inst.currentTransaction) {
+    if (!inst.currentTransaction.initialAtomValues.has(atom2)) {
+      inst.currentTransaction.initialAtomValues.set(atom2, previousValue);
     }
-  } else if (inst2.globalIsReacting) {
+  } else if (inst.globalIsReacting) {
     traverseAtomForCleanup(atom2);
   } else {
     flushChanges([atom2]);
   }
 }
 function traverseAtomForCleanup(atom2) {
-  const rs = inst2.cleanupReactors ??= /* @__PURE__ */ new Set();
+  const rs = inst.cleanupReactors ??= /* @__PURE__ */ new Set();
   atom2.children.visit((child) => traverse(rs, child));
 }
 function advanceGlobalEpoch() {
-  inst2.globalEpoch++;
+  inst.globalEpoch++;
 }
 function transaction(fn) {
-  const txn = new Transaction(inst2.currentTransaction);
-  inst2.currentTransaction = txn;
+  const txn = new Transaction(inst.currentTransaction);
+  inst.currentTransaction = txn;
   try {
     let result = void 0;
     let rollback = false;
@@ -43238,66 +43286,8 @@ function transaction(fn) {
     }
     return result;
   } finally {
-    inst2.currentTransaction = inst2.currentTransaction.parent;
+    inst.currentTransaction = inst.currentTransaction.parent;
   }
-}
-
-// node_modules/@tldraw/state/dist-esm/lib/Atom.mjs
-var __Atom__ = class {
-  constructor(name, current, options) {
-    this.name = name;
-    this.current = current;
-    this.isEqual = options?.isEqual ?? null;
-    if (!options) return;
-    if (options.historyLength) {
-      this.historyBuffer = new HistoryBuffer(options.historyLength);
-    }
-    this.computeDiff = options.computeDiff;
-  }
-  isEqual;
-  computeDiff;
-  lastChangedEpoch = getGlobalEpoch();
-  children = new ArraySet();
-  historyBuffer;
-  __unsafe__getWithoutCapture(_ignoreErrors) {
-    return this.current;
-  }
-  get() {
-    maybeCaptureParent(this);
-    return this.current;
-  }
-  set(value, diff) {
-    if (this.isEqual?.(this.current, value) ?? equals(this.current, value)) {
-      return this.current;
-    }
-    advanceGlobalEpoch();
-    if (this.historyBuffer) {
-      this.historyBuffer.pushEntry(
-        this.lastChangedEpoch,
-        getGlobalEpoch(),
-        diff ?? this.computeDiff?.(this.current, value, this.lastChangedEpoch, getGlobalEpoch()) ?? RESET_VALUE
-      );
-    }
-    this.lastChangedEpoch = getGlobalEpoch();
-    const oldValue = this.current;
-    this.current = value;
-    atomDidChange(this, oldValue);
-    return value;
-  }
-  update(updater) {
-    return this.set(updater(this.current));
-  }
-  getDiffSince(epoch) {
-    maybeCaptureParent(this);
-    if (epoch >= this.lastChangedEpoch) {
-      return EMPTY_ARRAY;
-    }
-    return this.historyBuffer?.getChangesSince(epoch) ?? RESET_VALUE;
-  }
-};
-var _Atom = singleton("Atom", () => __Atom__);
-function atom(name, initialValue, options) {
-  return new _Atom(name, initialValue, options);
 }
 
 // node_modules/@tldraw/state/dist-esm/lib/Computed.mjs
@@ -43323,6 +43313,7 @@ var __UNSAFE__Computed = class {
   }
   lastChangedEpoch = GLOBAL_START_EPOCH;
   lastTraversedEpoch = GLOBAL_START_EPOCH;
+  __debug_ancestor_epochs__ = null;
   /**
    * The epoch when the reactor was last checked.
    */
@@ -43410,6 +43401,191 @@ var __UNSAFE__Computed = class {
   }
 };
 var _Computed = singleton("Computed", () => __UNSAFE__Computed);
+function isComputed(value) {
+  return value && value instanceof _Computed;
+}
+
+// node_modules/@tldraw/state/dist-esm/lib/capture.mjs
+var CaptureStackFrame = class {
+  constructor(below, child) {
+    this.below = below;
+    this.child = child;
+  }
+  offset = 0;
+  maybeRemoved;
+};
+var inst2 = singleton("capture", () => ({ stack: null }));
+function startCapturingParents(child) {
+  inst2.stack = new CaptureStackFrame(inst2.stack, child);
+  if (child.__debug_ancestor_epochs__) {
+    const previousAncestorEpochs = child.__debug_ancestor_epochs__;
+    child.__debug_ancestor_epochs__ = null;
+    for (const p of child.parents) {
+      p.__unsafe__getWithoutCapture(true);
+    }
+    logChangedAncestors(child, previousAncestorEpochs);
+  }
+  child.parentSet.clear();
+}
+function stopCapturingParents() {
+  const frame = inst2.stack;
+  inst2.stack = frame.below;
+  if (frame.offset < frame.child.parents.length) {
+    for (let i = frame.offset; i < frame.child.parents.length; i++) {
+      const maybeRemovedParent = frame.child.parents[i];
+      if (!frame.child.parentSet.has(maybeRemovedParent)) {
+        detach(maybeRemovedParent, frame.child);
+      }
+    }
+    frame.child.parents.length = frame.offset;
+    frame.child.parentEpochs.length = frame.offset;
+  }
+  if (frame.maybeRemoved) {
+    for (let i = 0; i < frame.maybeRemoved.length; i++) {
+      const maybeRemovedParent = frame.maybeRemoved[i];
+      if (!frame.child.parentSet.has(maybeRemovedParent)) {
+        detach(maybeRemovedParent, frame.child);
+      }
+    }
+  }
+  if (frame.child.__debug_ancestor_epochs__) {
+    captureAncestorEpochs(frame.child, frame.child.__debug_ancestor_epochs__);
+  }
+}
+function maybeCaptureParent(p) {
+  if (inst2.stack) {
+    const wasCapturedAlready = inst2.stack.child.parentSet.has(p);
+    if (wasCapturedAlready) {
+      return;
+    }
+    inst2.stack.child.parentSet.add(p);
+    if (inst2.stack.child.isActivelyListening) {
+      attach(p, inst2.stack.child);
+    }
+    if (inst2.stack.offset < inst2.stack.child.parents.length) {
+      const maybeRemovedParent = inst2.stack.child.parents[inst2.stack.offset];
+      if (maybeRemovedParent !== p) {
+        if (!inst2.stack.maybeRemoved) {
+          inst2.stack.maybeRemoved = [maybeRemovedParent];
+        } else {
+          inst2.stack.maybeRemoved.push(maybeRemovedParent);
+        }
+      }
+    }
+    inst2.stack.child.parents[inst2.stack.offset] = p;
+    inst2.stack.child.parentEpochs[inst2.stack.offset] = p.lastChangedEpoch;
+    inst2.stack.offset++;
+  }
+}
+function captureAncestorEpochs(child, ancestorEpochs) {
+  for (let i = 0; i < child.parents.length; i++) {
+    const parent = child.parents[i];
+    const epoch = child.parentEpochs[i];
+    ancestorEpochs.set(parent, epoch);
+    if (isComputed(parent)) {
+      captureAncestorEpochs(parent, ancestorEpochs);
+    }
+  }
+  return ancestorEpochs;
+}
+function collectChangedAncestors(child, ancestorEpochs) {
+  const changeTree = {};
+  for (let i = 0; i < child.parents.length; i++) {
+    const parent = child.parents[i];
+    if (!ancestorEpochs.has(parent)) {
+      continue;
+    }
+    const prevEpoch = ancestorEpochs.get(parent);
+    const currentEpoch = parent.lastChangedEpoch;
+    if (currentEpoch !== prevEpoch) {
+      if (isComputed(parent)) {
+        changeTree[parent.name] = collectChangedAncestors(parent, ancestorEpochs);
+      } else {
+        changeTree[parent.name] = null;
+      }
+    }
+  }
+  return changeTree;
+}
+function logChangedAncestors(child, ancestorEpochs) {
+  const changeTree = collectChangedAncestors(child, ancestorEpochs);
+  if (Object.keys(changeTree).length === 0) {
+    console.log(`Effect(${child.name}) was executed manually.`);
+    return;
+  }
+  let str = isComputed(child) ? `Computed(${child.name}) is recomputing because:` : `Effect(${child.name}) is executing because:`;
+  function logParent(tree, indent) {
+    const indentStr = "\n" + " ".repeat(indent) + "\u21B3 ";
+    for (const [name, val] of Object.entries(tree)) {
+      if (val) {
+        str += `${indentStr}Computed(${name}) changed`;
+        logParent(val, indent + 2);
+      } else {
+        str += `${indentStr}Atom(${name}) changed`;
+      }
+    }
+  }
+  logParent(changeTree, 1);
+  console.log(str);
+}
+
+// node_modules/@tldraw/state/dist-esm/lib/Atom.mjs
+var __Atom__ = class {
+  constructor(name, current, options) {
+    this.name = name;
+    this.current = current;
+    this.isEqual = options?.isEqual ?? null;
+    if (!options) return;
+    if (options.historyLength) {
+      this.historyBuffer = new HistoryBuffer(options.historyLength);
+    }
+    this.computeDiff = options.computeDiff;
+  }
+  isEqual;
+  computeDiff;
+  lastChangedEpoch = getGlobalEpoch();
+  children = new ArraySet();
+  historyBuffer;
+  __unsafe__getWithoutCapture(_ignoreErrors) {
+    return this.current;
+  }
+  get() {
+    maybeCaptureParent(this);
+    return this.current;
+  }
+  set(value, diff) {
+    if (this.isEqual?.(this.current, value) ?? equals(this.current, value)) {
+      return this.current;
+    }
+    advanceGlobalEpoch();
+    if (this.historyBuffer) {
+      this.historyBuffer.pushEntry(
+        this.lastChangedEpoch,
+        getGlobalEpoch(),
+        diff ?? this.computeDiff?.(this.current, value, this.lastChangedEpoch, getGlobalEpoch()) ?? RESET_VALUE
+      );
+    }
+    this.lastChangedEpoch = getGlobalEpoch();
+    const oldValue = this.current;
+    this.current = value;
+    atomDidChange(this, oldValue);
+    return value;
+  }
+  update(updater) {
+    return this.set(updater(this.current));
+  }
+  getDiffSince(epoch) {
+    maybeCaptureParent(this);
+    if (epoch >= this.lastChangedEpoch) {
+      return EMPTY_ARRAY;
+    }
+    return this.historyBuffer?.getChangesSince(epoch) ?? RESET_VALUE;
+  }
+};
+var _Atom = singleton("Atom", () => __Atom__);
+function atom(name, initialValue, options) {
+  return new _Atom(name, initialValue, options);
+}
 
 // node_modules/@tldraw/state/dist-esm/index.mjs
 var currentApiVersion = 1;
@@ -43421,7 +43597,7 @@ if (actualApiVersion !== currentApiVersion) {
 }
 registerTldrawLibraryVersion(
   "@tldraw/state",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
@@ -43646,6 +43822,9 @@ function createRecordType(typeName, config) {
     ephemeralKeys: config.ephemeralKeys
   });
 }
+
+// node_modules/@tldraw/store/dist-esm/lib/Store.mjs
+var import_lodash4 = __toESM(require_lodash3(), 1);
 
 // node_modules/@tldraw/store/dist-esm/lib/StoreQueries.mjs
 var import_lodash3 = __toESM(require_lodash3(), 1);
@@ -44002,15 +44181,15 @@ var StoreSchema = class _StoreSchema {
 // node_modules/@tldraw/store/dist-esm/index.mjs
 registerTldrawLibraryVersion(
   "@tldraw/store",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
 // node_modules/@tldraw/sync-core/dist-esm/lib/TLSyncClient.mjs
-var import_lodash5 = __toESM(require_lodash3(), 1);
+var import_lodash6 = __toESM(require_lodash3(), 1);
 
 // node_modules/@tldraw/sync-core/dist-esm/lib/diff.mjs
-var import_lodash4 = __toESM(require_lodash3(), 1);
+var import_lodash5 = __toESM(require_lodash3(), 1);
 var RecordOpType = {
   Put: "put",
   Patch: "patch",
@@ -44038,7 +44217,7 @@ function diffObject(prev, next, nestedKeys) {
     }
     const prevVal = prev[key];
     const nextVal = next[key];
-    if (!(0, import_lodash4.default)(prevVal, nextVal)) {
+    if (!(0, import_lodash5.default)(prevVal, nextVal)) {
       if (nestedKeys?.has(key) && prevVal && nextVal) {
         const diff = diffObject(prevVal, nextVal);
         if (diff) {
@@ -44070,7 +44249,7 @@ function diffValue(valueA, valueB) {
   if (Array.isArray(valueA) && Array.isArray(valueB)) {
     return diffArray(valueA, valueB);
   } else if (!valueA || !valueB || typeof valueA !== "object" || typeof valueB !== "object") {
-    return (0, import_lodash4.default)(valueA, valueB) ? null : [ValueOpType.Put, valueB];
+    return (0, import_lodash5.default)(valueA, valueB) ? null : [ValueOpType.Put, valueB];
   } else {
     const diff = diffObject(valueA, valueB);
     return diff ? [ValueOpType.Patch, diff] : null;
@@ -44082,7 +44261,7 @@ function diffArray(prevArray, nextArray) {
     const maxPatchIndexes = Math.max(prevArray.length / 5, 1);
     const toPatchIndexes = [];
     for (let i = 0; i < prevArray.length; i++) {
-      if (!(0, import_lodash4.default)(prevArray[i], nextArray[i])) {
+      if (!(0, import_lodash5.default)(prevArray[i], nextArray[i])) {
         toPatchIndexes.push(i);
         if (toPatchIndexes.length > maxPatchIndexes) {
           return [ValueOpType.Put, nextArray];
@@ -44110,7 +44289,7 @@ function diffArray(prevArray, nextArray) {
     return [ValueOpType.Patch, diff];
   }
   for (let i = 0; i < prevArray.length; i++) {
-    if (!(0, import_lodash4.default)(prevArray[i], nextArray[i])) {
+    if (!(0, import_lodash5.default)(prevArray[i], nextArray[i])) {
       return [ValueOpType.Put, nextArray];
     }
   }
@@ -44138,7 +44317,7 @@ function applyObjectDiff(object2, objectDiff) {
     switch (op[0]) {
       case ValueOpType.Put: {
         const value = op[1];
-        if (!(0, import_lodash4.default)(object2[key], value)) {
+        if (!(0, import_lodash5.default)(object2[key], value)) {
           set(key, value);
         }
         break;
@@ -44952,7 +45131,7 @@ function or(v1, v2) {
 // node_modules/@tldraw/validate/dist-esm/index.mjs
 registerTldrawLibraryVersion(
   "@tldraw/validate",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
@@ -47157,10 +47336,28 @@ var embedShapeMigrations = createShapePropsMigrationSequence({
 var frameShapeProps = {
   w: validation_exports.nonZeroNumber,
   h: validation_exports.nonZeroNumber,
-  name: validation_exports.string
+  name: validation_exports.string,
+  // because shape colors are an option, we don't want them to be picked up by the editor as a
+  // style prop by default, so instead of a proper style we just supply an equivalent validator.
+  // Check `FrameShapeUtil.configure` for how we replace this with the original
+  // `DefaultColorStyle` style when the option is turned on.
+  color: validation_exports.literalEnum(...DefaultColorStyle.values)
 };
+var Versions7 = createShapePropsMigrationIds("frame", {
+  AddColorProp: 1
+});
 var frameShapeMigrations = createShapePropsMigrationSequence({
-  sequence: []
+  sequence: [
+    {
+      id: Versions7.AddColorProp,
+      up: (props) => {
+        props.color = "black";
+      },
+      down: (props) => {
+        delete props.color;
+      }
+    }
+  ]
 });
 
 // node_modules/@tldraw/tlschema/dist-esm/misc/TLRichText.mjs
@@ -47360,13 +47557,13 @@ var highlightShapeProps = {
   isPen: validation_exports.boolean,
   scale: validation_exports.nonZeroNumber
 };
-var Versions7 = createShapePropsMigrationIds("highlight", {
+var Versions8 = createShapePropsMigrationIds("highlight", {
   AddScale: 1
 });
 var highlightShapeMigrations = createShapePropsMigrationSequence({
   sequence: [
     {
-      id: Versions7.AddScale,
+      id: Versions8.AddScale,
       up: (props) => {
         props.scale = 1;
       },
@@ -47390,25 +47587,27 @@ var imageShapeProps = {
   assetId: assetIdValidator.nullable(),
   crop: ImageShapeCrop.nullable(),
   flipX: validation_exports.boolean,
-  flipY: validation_exports.boolean
+  flipY: validation_exports.boolean,
+  altText: validation_exports.string
 };
-var Versions8 = createShapePropsMigrationIds("image", {
+var Versions9 = createShapePropsMigrationIds("image", {
   AddUrlProp: 1,
   AddCropProp: 2,
   MakeUrlsValid: 3,
-  AddFlipProps: 4
+  AddFlipProps: 4,
+  AddAltText: 5
 });
 var imageShapeMigrations = createShapePropsMigrationSequence({
   sequence: [
     {
-      id: Versions8.AddUrlProp,
+      id: Versions9.AddUrlProp,
       up: (props) => {
         props.url = "";
       },
       down: "retired"
     },
     {
-      id: Versions8.AddCropProp,
+      id: Versions9.AddCropProp,
       up: (props) => {
         props.crop = null;
       },
@@ -47417,7 +47616,7 @@ var imageShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions8.MakeUrlsValid,
+      id: Versions9.MakeUrlsValid,
       up: (props) => {
         if (!validation_exports.linkUrl.isValid(props.url)) {
           props.url = "";
@@ -47427,7 +47626,7 @@ var imageShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions8.AddFlipProps,
+      id: Versions9.AddFlipProps,
       up: (props) => {
         props.flipX = false;
         props.flipY = false;
@@ -47435,6 +47634,15 @@ var imageShapeMigrations = createShapePropsMigrationSequence({
       down: (props) => {
         delete props.flipX;
         delete props.flipY;
+      }
+    },
+    {
+      id: Versions9.AddAltText,
+      up: (props) => {
+        props.altText = "";
+      },
+      down: (props) => {
+        delete props.altText;
       }
     }
   ]
@@ -47586,7 +47794,7 @@ var noteShapeProps = {
   richText: richTextValidator,
   scale: validation_exports.nonZeroNumber
 };
-var Versions9 = createShapePropsMigrationIds("note", {
+var Versions10 = createShapePropsMigrationIds("note", {
   AddUrlProp: 1,
   RemoveJustify: 2,
   MigrateLegacyAlign: 3,
@@ -47600,14 +47808,14 @@ var Versions9 = createShapePropsMigrationIds("note", {
 var noteShapeMigrations = createShapePropsMigrationSequence({
   sequence: [
     {
-      id: Versions9.AddUrlProp,
+      id: Versions10.AddUrlProp,
       up: (props) => {
         props.url = "";
       },
       down: "retired"
     },
     {
-      id: Versions9.RemoveJustify,
+      id: Versions10.RemoveJustify,
       up: (props) => {
         if (props.align === "justify") {
           props.align = "start";
@@ -47616,7 +47824,7 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       down: "retired"
     },
     {
-      id: Versions9.MigrateLegacyAlign,
+      id: Versions10.MigrateLegacyAlign,
       up: (props) => {
         switch (props.align) {
           case "start":
@@ -47633,14 +47841,14 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       down: "retired"
     },
     {
-      id: Versions9.AddVerticalAlign,
+      id: Versions10.AddVerticalAlign,
       up: (props) => {
         props.verticalAlign = "middle";
       },
       down: "retired"
     },
     {
-      id: Versions9.MakeUrlsValid,
+      id: Versions10.MakeUrlsValid,
       up: (props) => {
         if (!validation_exports.linkUrl.isValid(props.url)) {
           props.url = "";
@@ -47650,7 +47858,7 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions9.AddFontSizeAdjustment,
+      id: Versions10.AddFontSizeAdjustment,
       up: (props) => {
         props.fontSizeAdjustment = 0;
       },
@@ -47659,7 +47867,7 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions9.AddScale,
+      id: Versions10.AddScale,
       up: (props) => {
         props.scale = 1;
       },
@@ -47668,7 +47876,7 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions9.AddLabelColor,
+      id: Versions10.AddLabelColor,
       up: (props) => {
         props.labelColor = "black";
       },
@@ -47677,7 +47885,7 @@ var noteShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions9.AddRichText,
+      id: Versions10.AddRichText,
       up: (props) => {
         props.richText = toRichText(props.text);
         delete props.text;
@@ -47707,7 +47915,7 @@ var textShapeProps = {
   scale: validation_exports.nonZeroNumber,
   autoSize: validation_exports.boolean
 };
-var Versions10 = createShapePropsMigrationIds("text", {
+var Versions11 = createShapePropsMigrationIds("text", {
   RemoveJustify: 1,
   AddTextAlign: 2,
   AddRichText: 3
@@ -47715,7 +47923,7 @@ var Versions10 = createShapePropsMigrationIds("text", {
 var textShapeMigrations = createShapePropsMigrationSequence({
   sequence: [
     {
-      id: Versions10.RemoveJustify,
+      id: Versions11.RemoveJustify,
       up: (props) => {
         if (props.align === "justify") {
           props.align = "start";
@@ -47724,7 +47932,7 @@ var textShapeMigrations = createShapePropsMigrationSequence({
       down: "retired"
     },
     {
-      id: Versions10.AddTextAlign,
+      id: Versions11.AddTextAlign,
       up: (props) => {
         props.textAlign = props.align;
         delete props.align;
@@ -47735,7 +47943,7 @@ var textShapeMigrations = createShapePropsMigrationSequence({
       }
     },
     {
-      id: Versions10.AddRichText,
+      id: Versions11.AddRichText,
       up: (props) => {
         props.richText = toRichText(props.text);
         delete props.text;
@@ -47755,23 +47963,25 @@ var videoShapeProps = {
   time: validation_exports.number,
   playing: validation_exports.boolean,
   url: validation_exports.linkUrl,
-  assetId: assetIdValidator.nullable()
+  assetId: assetIdValidator.nullable(),
+  altText: validation_exports.string
 };
-var Versions11 = createShapePropsMigrationIds("video", {
+var Versions12 = createShapePropsMigrationIds("video", {
   AddUrlProp: 1,
-  MakeUrlsValid: 2
+  MakeUrlsValid: 2,
+  AddAltText: 3
 });
 var videoShapeMigrations = createShapePropsMigrationSequence({
   sequence: [
     {
-      id: Versions11.AddUrlProp,
+      id: Versions12.AddUrlProp,
       up: (props) => {
         props.url = "";
       },
       down: "retired"
     },
     {
-      id: Versions11.MakeUrlsValid,
+      id: Versions12.MakeUrlsValid,
       up: (props) => {
         if (!validation_exports.linkUrl.isValid(props.url)) {
           props.url = "";
@@ -47779,12 +47989,21 @@ var videoShapeMigrations = createShapePropsMigrationSequence({
       },
       down: (_props) => {
       }
+    },
+    {
+      id: Versions12.AddAltText,
+      up: (props) => {
+        props.altText = "";
+      },
+      down: (props) => {
+        delete props.altText;
+      }
     }
   ]
 });
 
 // node_modules/@tldraw/tlschema/dist-esm/store-migrations.mjs
-var Versions12 = createMigrationIds("com.tldraw.store", {
+var Versions13 = createMigrationIds("com.tldraw.store", {
   RemoveCodeAndIconShapeTypes: 1,
   AddInstancePresenceType: 2,
   RemoveTLUserAndPresenceAndAddPointer: 3,
@@ -47795,7 +48014,7 @@ var storeMigrations = createMigrationSequence({
   retroactive: false,
   sequence: [
     {
-      id: Versions12.RemoveCodeAndIconShapeTypes,
+      id: Versions13.RemoveCodeAndIconShapeTypes,
       scope: "store",
       up: (store) => {
         for (const [id, record] of objectMapEntries(store)) {
@@ -47806,14 +48025,14 @@ var storeMigrations = createMigrationSequence({
       }
     },
     {
-      id: Versions12.AddInstancePresenceType,
+      id: Versions13.AddInstancePresenceType,
       scope: "store",
       up(_store) {
       }
     },
     {
       // remove user and presence records and add pointer records
-      id: Versions12.RemoveTLUserAndPresenceAndAddPointer,
+      id: Versions13.RemoveTLUserAndPresenceAndAddPointer,
       scope: "store",
       up: (store) => {
         for (const [id, record] of objectMapEntries(store)) {
@@ -47825,7 +48044,7 @@ var storeMigrations = createMigrationSequence({
     },
     {
       // remove user document records
-      id: Versions12.RemoveUserDocument,
+      id: Versions13.RemoveUserDocument,
       scope: "store",
       up: (store) => {
         for (const [id, record] of objectMapEntries(store)) {
@@ -47915,7 +48134,7 @@ function createTLSchema({
 // node_modules/@tldraw/tlschema/dist-esm/index.mjs
 registerTldrawLibraryVersion(
   "@tldraw/tlschema",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
@@ -47940,7 +48159,7 @@ var ServerSocketAdapter = class {
 };
 
 // node_modules/@tldraw/sync-core/dist-esm/lib/TLSyncRoom.mjs
-var import_lodash6 = __toESM(require_lodash3(), 1);
+var import_lodash7 = __toESM(require_lodash3(), 1);
 
 // node_modules/nanoevents/index.js
 var createNanoEvents = () => ({
@@ -48154,7 +48373,7 @@ var TLSyncRoom = class {
           this.clock,
           assertExists(getOwnProperty(this.schema.types, r.typeName))
         );
-      } else if (!(0, import_lodash6.default)(existing.state, r)) {
+      } else if (!(0, import_lodash7.default)(existing.state, r)) {
         ensureClockDidIncrement("record was maybe updated during migration");
         existing.replaceState(r, this.clock);
       }
@@ -48510,7 +48729,7 @@ var TLSyncRoom = class {
       this.rejectSession(session.sessionId, TLSyncErrorCloseEventReason.CLIENT_TOO_OLD);
       return;
     }
-    const sessionSchema = (0, import_lodash6.default)(message.schema, this.serializedSchema) ? this.serializedSchema : message.schema;
+    const sessionSchema = (0, import_lodash7.default)(message.schema, this.serializedSchema) ? this.serializedSchema : message.schema;
     const connect = (msg) => {
       this.sessions.set(session.sessionId, {
         state: RoomSessionState.Connected,
@@ -48740,7 +48959,7 @@ var TLSyncRoom = class {
       if (
         // if there was only a presence push, the client doesn't need to do anything aside from
         // shift the push request.
-        !message.diff || (0, import_lodash6.default)(docChanges.diff, message.diff)
+        !message.diff || (0, import_lodash7.default)(docChanges.diff, message.diff)
       ) {
         if (session) {
           this.sendMessage(session.sessionId, {
@@ -48838,7 +49057,7 @@ var StoreUpdateContext = class {
   };
   put(record) {
     if (this._isClosed) throw new Error("StoreUpdateContext is closed");
-    if (record.id in this.snapshot && (0, import_lodash6.default)(this.snapshot[record.id], record)) {
+    if (record.id in this.snapshot && (0, import_lodash7.default)(this.snapshot[record.id], record)) {
       delete this.updates.puts[record.id];
     } else {
       this.updates.puts[record.id] = structuredClone(record);
@@ -49174,12 +49393,12 @@ function convertStoreSnapshotToRoomSnapshot(snapshot) {
 // node_modules/@tldraw/sync-core/dist-esm/index.mjs
 registerTldrawLibraryVersion(
   "@tldraw/sync-core",
-  "3.11.0",
+  "3.12.0",
   "esm"
 );
 
 // rooms.js
-var import_lodash7 = __toESM(require_lodash());
+var import_lodash8 = __toESM(require_lodash());
 var import_promises = require("fs/promises");
 var import_path = require("path");
 var DIR = process.env.NICEGUI_TLDRAW_SYNC_STATE_DIR || "./.rooms";
@@ -49216,9 +49435,8 @@ async function makeOrLoadRoom(roomId) {
             roomId
           );
         },
-        onDataChange: (0, import_lodash7.default)(async () => {
+        onDataChange: (0, import_lodash8.default)(async () => {
           try {
-            console.log(`persist snapshot ${roomState.id}`);
             saveSnapshot(roomState.id, roomState.room.getCurrentSnapshot());
           } catch (err) {
             console.log("[nicegui_tldraw] error persisting snapshot");
