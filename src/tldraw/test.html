@@ -15,7 +15,7 @@
     let methods;
     // tldraw.render("#root", {syncServer: "127.0.0.1:8081", "room": "test"}).then((m) => methods = m);
     const { root, promise } = tldraw.render("#root", {
-      syncServer:  "127.0.0.1:8081",
+      //syncServer:  "127.0.0.1:8081",
       room: "test",
     });
     promise.then(({ methods }) => {
