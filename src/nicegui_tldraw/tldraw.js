@@ -20,7 +20,10 @@ export default {
         getEditor: this.getEditor,
       } = methods);
       this.$emit("ready");
-      console.log("ready");
+
+      // Add mouseenter and mouseleave event handlers
+      this.$el.addEventListener('mouseenter', this.handleMouseEnter);
+      this.$el.addEventListener('mouseleave', this.handleMouseLeave);
     });
     this.root = root;
   },
@@ -30,6 +33,9 @@ export default {
     } else {
       console.log("no unmount");
     }
+    // Remove event listeners
+    this.$el.removeEventListener('mouseenter', this.handleMouseEnter);
+    this.$el.removeEventListener('mouseleave', this.handleMouseLeave);
     this.getSnapshot = null;
     this.loadSnapshot = null;
     this.toRichText = null;
@@ -37,6 +43,18 @@ export default {
     this.unmount = null;
   },
   methods: {
+    handleMouseEnter() {
+      const editor = this.getEditor();
+      if (editor) {
+        editor.focus();
+      }
+    },
+    handleMouseLeave() {
+      const editor = this.getEditor();
+      if (editor) {
+        editor.blur();
+      }
+    },
     save() {
       const editor = this.getEditor();
       if (editor) {
