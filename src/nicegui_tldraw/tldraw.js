@@ -22,8 +22,10 @@ export default {
       this.$emit("ready");
 
       // Add mouseenter and mouseleave event handlers
-      this.$el.addEventListener('mouseenter', this.handleMouseEnter);
-      this.$el.addEventListener('mouseleave', this.handleMouseLeave);
+      if (this.focus_control) {
+        this.$el.addEventListener('mouseenter', this.handleMouseEnter);
+        this.$el.addEventListener('mouseleave', this.handleMouseLeave);
+      }
     });
     this.root = root;
   },
@@ -34,8 +36,10 @@ export default {
       console.log("no unmount");
     }
     // Remove event listeners
-    this.$el.removeEventListener('mouseenter', this.handleMouseEnter);
-    this.$el.removeEventListener('mouseleave', this.handleMouseLeave);
+    if (this.focus_control) {
+      this.$el.removeEventListener('mouseenter', this.handleMouseEnter);
+      this.$el.removeEventListener('mouseleave', this.handleMouseLeave);
+    }
     this.getSnapshot = null;
     this.loadSnapshot = null;
     this.toRichText = null;
@@ -81,5 +85,9 @@ export default {
       type: Boolean,
       default: false,
     },
+    focus_control: {
+      type: Boolean,
+      default: false,
+    }
   },
 };
