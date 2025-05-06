@@ -34,6 +34,7 @@ class Tldraw(
         room=DEFAULT_ROOM,
         user_preferences=None,
         auto_focus=False,
+        focus_control=False,
     ):
         super().__init__()
         self._props["sync_server"] = sync_server
@@ -41,6 +42,7 @@ class Tldraw(
         self._props["room"] = room
         self._props["user_preferences"] = user_preferences
         self._props["auto_focus"] = auto_focus
+        self._props["focus_control"] = focus_control
 
     def save(self, timeout: float = 1) -> AwaitableResponse:
         return self.run_method("save", timeout=timeout)
