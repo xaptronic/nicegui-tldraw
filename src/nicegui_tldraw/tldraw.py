@@ -109,10 +109,12 @@ class Tldraw(
         print("[nicegui_tldraw] stopped sync server")
 
 
-def register_lifecycle(enable_sourcemap=False, no_minified=False):
+def register_lifecycle(
+    enable_sourcemap=False, no_minified=False, port=SYNC_SERVER_PORT
+):
     async def handle_startup():
         Tldraw.start_sync_server(
-            enable_sourcemap=enable_sourcemap, no_minified=no_minified
+            enable_sourcemap=enable_sourcemap, no_minified=no_minified, port=port
         )
 
     app.on_startup(handle_startup)
